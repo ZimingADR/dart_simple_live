@@ -27,8 +27,6 @@ jobs:
 
       - name: Build Windows release
         working-directory: simple_live_app
-        env:
-          CMAKE_CXX_FLAGS: /D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS
         run: flutter build windows --release
 
       - name: Package portable zip
