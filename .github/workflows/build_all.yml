@@ -1,0 +1,85 @@
+name: build-all
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build-windows:
+    name: Windows (EXE installer + portable zip)
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Enable Windows desktop
+        run: flutter config --enable-windows-desktop
+
+      - name: Restore packages
+        working-directory: simple_live_app
+        run: flutter pub get
+
+      - name: Build Windows release
+        working-directory: simple_live_app
+        run: flutter build windows --release
+
+      - name: Package portable zip
+        shell: powershell
+        working-directory: simple_live_app
+        run: |
+          New-Item -ItemType Directory -Force -Path build/dist | Out-Null
+          Compress-Archive -Path build/windows/x64/runner/Release/* -DestinationPath build/dist/simple_live_windows_portable.zip -Force
+
+      - name: Install Inno Setup
+        run: choco install innosetup -y --no-progress
+
+      - name: Compile EXE installer
+        shell: bash
+        run: |
+          VER=$(grep '^version:' simple_live_app/pubspec.yaml | head -1 | sed -E 's/version: ([0-9.]+).*/\1/')
+          echo "Version: $VER"
+          "/c/Program Files (x86)/Inno Setup 6/ISCC.exe" installer/windows/simple_live_app.iss "/DMyAppVersion=$VER"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: windows
+          path: |
+            simple_live_app/build/dist/*.zip
+            simple_live_app/build/dist/*.exe
+
+  build-ios:
+    name: iOS (unsigned IPA)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: "3.38.x"
+          cache: true
+
+      - name: Restore packages
+        working-directory: simple_live_app
+        run: flutter pub get
+
+      - name: Build iOS release (no codesign)
+        working-directory: simple_live_app
+        run: flutter build ios --release --no-codesign
+
+      - name: Create unsigned IPA
+        run: |
+          cd simple_live_app/build/ios/iphoneos
+          mkdir Payload
+          cp -R Runner.app Payload/Runner.app
+          zip -q -r simple_live_ios.ipa Payload
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios
+          path: simple_live_app/build/ios/iphoneos/simple_live_ios.ipa
